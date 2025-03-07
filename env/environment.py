@@ -278,6 +278,23 @@ class MEC_RL_ENV(gym.Env):
             plt.annotate(uav.no + 1, xy=(uav.position[0], uav.position[1]), xytext=(uav.position[0] + 0.1, uav.position[1] + 0.1))
             obs_plot = get_circle_plot(uav.position, self.uav_collect_r)
             plt.fill_between(obs_plot[0], obs_plot[1], obs_plot[2], where=obs_plot[1] > obs_plot[2], color='darkgreen', alpha=0.05)
+        # 可视化D2D卸载连接
+        for i, sensor in enumerate(self.sensors):
+            if sensor.action.offload[9] == 1:  # 如果传感器选择D2D卸载
+                # 找到最近的另一个传感器
+                closest_sensor = None
+                closest_distance = float('inf')
+                for j, other_sensor in enumerate(self.sensors):
+                    if i != j:
+                        distance = np.linalg.norm(np.array(sensor.position) - np.array(other_sensor.position))
+                        if distance < closest_distance:
+                            closest_distance = distance
+                            closest_sensor = other_sensor
+                if closest_sensor is not None:
+                    plt.plot([sensor.position[0], closest_sensor.position[0]],
+                             [sensor.position[1], closest_sensor.position[1]], color='purple', linestyle='--',
+                             alpha=0.5)
+
         # 模拟场景车道
         plt.fill_between([0,200], 75, 125, color='navy', alpha=0.2)
         plt.fill_between([75,125], 0, 200, color='navy', alpha=0.2)

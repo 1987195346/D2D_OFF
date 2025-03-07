@@ -130,7 +130,7 @@ def center_actor(input_dim_list):
     # concatenated = layers.GlobalAveragePooling1D()(concatenated)
     # mlp_message = layers.Dense(64, activation='relu')(concatenated)
     mlp_message = layers.Dense(32, activation='relu')(concatenated)
-    off_who = layers.Dense(9, activation='softmax')(mlp_message)        #9种卸载动作
+    off_who = layers.Dense(10, activation='softmax')(mlp_message)        # 9种卸载动作 + 1种D2D动作 = 10种动作
     model = keras.Model(inputs=[device_data_amount_k, device_compute_k, device_transfer_k], outputs=[off_who])
     return model
 
@@ -145,7 +145,7 @@ def center_critic(input_dim_list, op):
     concatenated = layers.Concatenate()([device_data_amount_k, device_compute_k, device_transfer_k])
     mlp_message = layers.Dense(16, activation='relu')(concatenated)
     mlp_message = layers.Dense(8, activation='relu')(mlp_message)
-    off_who = layers.Dense(9, activation='relu')(mlp_message)
+    off_who = layers.Dense(10, activation='relu')(mlp_message)  # 9种卸载动作 + 1种D2D动作 = 10种动作
 
     # off_who = tf.expand_dims(off_who, axis=-1)
     # execute_op = tf.expand_dims(execute_op, axis=-1)
@@ -190,7 +190,7 @@ class MEC_RL_With_Uav(object):
         self.device_compute = (self.uav_num + self.server_num + 1)
         self.device_transfer = (self.uav_num + self.server_num + 1)
 
-        self.execute_op_shape = (self.uav_num + self.server_num + 1)
+        self.execute_op_shape = (self.uav_num + self.server_num + 2)
 
         # 无人机移动动作的随机选取
         self.move_count, self.move_dict = discrete_circle_sample_count(self.env.uav_move_r)
@@ -328,8 +328,8 @@ class MEC_RL_With_Uav(object):
                 # 调用sensor的演员网络（self.center_actor）来预测传感器的卸载操作
                 action_output = self.center_actor.predict([device_data_amount, device_compute, device_transfer])
                 execute_op_dist = action_output[0]
-                # 初始化一个长度为9的列表execute，并将所有值设为0
-                execute = [0] * 9
+                # 初始化一个长度为10的列表execute，并将所有值设为0
+                execute = [0] * 10
                 # 找出execute_op_dist中最大值的索引，并将execute列表中该索引位置的值设置为1
                 execute[np.argmax(execute_op_dist)] = 1
 
@@ -399,9 +399,9 @@ class MEC_RL_With_Uav(object):
             
             # 随机卸载决策
             for i, sensor in enumerate(self.sensors):
-                execute = [0] * self.device_num
+                execute = [0] * (self.device_num + 1)
                 # 随机选择一个索引，将其位置的值设置为1
-                execute[np.random.randint(self.device_num)] = 1
+                execute[np.random.randint(self.device_num + 1)] = 1    # 增加D2D选项
                 sensor_act_list.append(execute)
             new_state_maps, uav_rewards, sensor_rewards = self.env.step(uav_act_list, sensor_act_list, True)
 

@@ -219,7 +219,30 @@ class MEC_world(object):
                     if self.is_point_in_circle(sensor.position, position_offload, self.uav_collect_r) and sensor.total_data:
                         self.uav_collect_and_process(sensor, data_size, position_offload, 3)
                         continue
-
+                # 索引为 9 表示卸载到其他传感器，【 假设 】 这里使用一个简单的策略，即卸载到最近的另一个传感器
+                elif position_index == 9:
+                    print("d2d start: \n")
+                    closest_sensor = None
+                    closest_distance = float('inf')
+                    for j, other_sensor in enumerate(self.sensors):
+                        if i != j:
+                            distance = np.linalg.norm(np.array(sensor.position) - np.array(other_sensor.position))
+                            if distance < closest_distance:
+                                closest_distance = distance
+                                closest_sensor = other_sensor
+                    if closest_sensor is not None and self.is_point_in_circle(sensor.position, closest_sensor.position, self.sensor_move_r):
+                        if (data_size > 1800):
+                            self.sensor_delay.append(2)  # 传感器处理的数据量超过1800时，给予固定的延迟奖励（值为2,函数调用地方还会变成1的）
+                        else:
+                            # 计算传输和处理延迟
+                            dist = np.linalg.norm(np.array(sensor.position) - np.array(closest_sensor.position))
+                            transmit_or_collect_delay = data_size / self.transmit_rate(dist, sensor)
+                            sensor_or_uav_process_delay = data_size / closest_sensor.computing_rate
+                            self.sensor_delay.append(transmit_or_collect_delay + sensor_or_uav_process_delay)
+                        ########closest_sensor.total_data[len(closest_sensor.total_data)] = data_size  # 将数据卸载到最近的传感器
+                        sensor.total_data = {}
+                        print("d2d ok \n")
+                        continue
                 # 如果没有走上面的 continue，则代表网络输出的卸载决策，不在设备的覆盖范围内
                 # 是一个错误的卸载决策，所以直接将奖励设置为 0
                 self.sensor_delay.append(0)
