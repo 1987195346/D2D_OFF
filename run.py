@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 import random
 import tensorflow as tf
@@ -9,6 +10,24 @@ from matplotlib import pyplot as plt
 from env import define
 from env import environment
 import mec_rl_with_uav
+
+class Logger:
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.log = open(filename, "a")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        # 确保输出流被刷新
+        self.terminal.flush()
+        self.log.flush()
+
+# 创建Logger对象，重定向标准输出和标准错误输出
+sys.stdout = Logger("new_logs/log.txt")
+sys.stderr = Logger("new_logs/log.txt")
 
 print("TensorFlow version: ", tf.__version__)
 print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
@@ -105,3 +124,7 @@ f.close()
 
 # 开始训练智能体
 MAAC.train(MAX_EPOCH, MAX_EP_STEPS, up_freq=up_freq, render=True, render_freq=render_freq, FL=FL, FL_omega=FL_omega)
+
+# 关闭Logger对象
+sys.stdout.log.close()
+sys.stderr.log.close()
