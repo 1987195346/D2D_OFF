@@ -125,7 +125,28 @@ class MEC_RL_ENV(gym.Env):
         #为特定无人机生成其观察区域内的环境状态数据
         for uav in self.uavs:
             obs.append(self.get_uav_obs(uav))
+        #年龄奖励
+        processed_age = 10/(self.world.all_sensors_age+0.01)
+        age_reward = 0
 
+        # 200 以上的 len
+        if processed_age < 0.05:
+            age_reward = 0.1
+        # 100 - 200
+        if processed_age >= 0.05 and processed_age < 0.1:
+            age_reward = 0.3
+        # 50 - 100
+        if processed_age >= 0.1 and processed_age < 0.2:
+            age_reward = 0.6
+        if processed_age >= 0.2 and processed_age < 0.3:
+            age_reward = 0.7
+        if processed_age >= 0.3 and processed_age < 0.4:
+            age_reward = 0.8
+        if processed_age >= 0.4 and processed_age < 0.5:
+            age_reward = 0.8
+        if processed_age >= 0.5:
+            age_reward = 1
+        
         #【 第三步：获得奖励 】
         logging.info("get reward")
         # 传感器的奖励在 define.py 文件中
@@ -133,7 +154,10 @@ class MEC_RL_ENV(gym.Env):
         # 计算无人机执行移动决策奖励：考虑无人机整体的覆盖率，四个无人机具有相同的奖励
         uav_reward = self.get_uav_reward()
         for uav in self.uavs:
-            uav_rewards.append(round(uav_reward, 3))  #四舍五入，3位小数
+            all_uav_reward = 0.5*uav_reward + 0.5*age_reward
+            # all_uav_reward = age_reward
+            # all_uav_reward = uav_reward
+            uav_rewards.append(round(all_uav_reward, 3))
         
         return obs, uav_rewards, self.world.sensor_delay
     
@@ -278,23 +302,6 @@ class MEC_RL_ENV(gym.Env):
             plt.annotate(uav.no + 1, xy=(uav.position[0], uav.position[1]), xytext=(uav.position[0] + 0.1, uav.position[1] + 0.1))
             obs_plot = get_circle_plot(uav.position, self.uav_collect_r)
             plt.fill_between(obs_plot[0], obs_plot[1], obs_plot[2], where=obs_plot[1] > obs_plot[2], color='darkgreen', alpha=0.05)
-        # 可视化D2D卸载连接
-        for i, sensor in enumerate(self.sensors):
-            if sensor.action.offload[9] == 1:  # 如果传感器选择D2D卸载
-                # 找到最近的另一个传感器
-                closest_sensor = None
-                closest_distance = float('inf')
-                for j, other_sensor in enumerate(self.sensors):
-                    if i != j:
-                        distance = np.linalg.norm(np.array(sensor.position) - np.array(other_sensor.position))
-                        if distance < closest_distance:
-                            closest_distance = distance
-                            closest_sensor = other_sensor
-                if closest_sensor is not None:
-                    plt.plot([sensor.position[0], closest_sensor.position[0]],
-                             [sensor.position[1], closest_sensor.position[1]], color='purple', linestyle='--',
-                             alpha=0.5)
-
         # 模拟场景车道
         plt.fill_between([0,200], 75, 125, color='navy', alpha=0.2)
         plt.fill_between([75,125], 0, 200, color='navy', alpha=0.2)

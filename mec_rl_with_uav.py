@@ -9,6 +9,8 @@ import os
 import imageio
 import glob
 
+from env import define
+
 # 计算二维直角坐标系下的两个点的距离
 def distance(x1, y1, x2, y2):
     return np.sqrt((x2-x1)**2 + (y2-y1)**2)
@@ -304,11 +306,13 @@ class MEC_RL_With_Uav(object):
             for i, uav in enumerate(self.uavs):
                 self.uav_move(uav_act_list[i], uav)
                 if(epoch <= 2000):
-                    uav.position_x.append(uav.position[0])
-                    uav.position_y.append(uav.position[1])
+                    uav.position_x_first.append(uav.position[0])
+                    uav.position_y_first.append(uav.position[1])
                 if(epoch >= 8000):
                     uav.position_x_last.append(uav.position[0])
                     uav.position_y_last.append(uav.position[1])
+                uav.position_x.append(uav.position[0])
+                uav.position_y.append(uav.position[1])
 
             #【 第二步：传感器生成卸载决策 】
             self.last_sensor_no = []
@@ -343,6 +347,14 @@ class MEC_RL_With_Uav(object):
                 sensor_act_list.append(execute)
                 # 将构建好的 execute_op_softmax（表示卸载操作的概率分布）添加到 sensor_softmax_list 列表中
                 sensor_softmax_list.append([execute_op_softmax])
+
+                #【 2025年3月9日】添加一个判断条件，该sensor是否使用了D2D卸载
+                if sensor.d2d_flag:
+                    self.env.world.d2d_num.append([epoch, sensor.no])
+                    sensor.d2d_count += 1
+                    sensor.d2d_flag = False
+
+
             print(sensor_act_list)
 
             #【 第三步：具体执行两种决策 】
@@ -391,11 +403,13 @@ class MEC_RL_With_Uav(object):
             for i, uav in enumerate(self.uavs):
                 self.uav_move(uav_act_list[i], uav)
                 if(epoch <= 2000):
-                    uav.position_x.append(uav.position[0])
-                    uav.position_y.append(uav.position[1])
+                    uav.position_x_first.append(uav.position[0])
+                    uav.position_y_first.append(uav.position[1])
                 if(epoch >= 8000):
                     uav.position_x_last.append(uav.position[0])
                     uav.position_y_last.append(uav.position[1])
+                uav.position_x.append(uav.position[0])
+                uav.position_y.append(uav.position[1])
             
             # 随机卸载决策
             for i, sensor in enumerate(self.sensors):
@@ -529,7 +543,7 @@ class MEC_RL_With_Uav(object):
         os.makedirs('new_logs/models/' + cur_time)
         #创建一个TensorFlow记录器，用于在训练期间记录和保存模型的训练日志和指标
         summary_writer = tf.summary.create_file_writer(train_log_dir)
-        episode, steps, epoch, total_reward = 0, 0, 0, 0
+        episode, steps, epoch, total_reward, total_age = 0, 0, 0, 0, 0
         finish_length = []
         finish_size = []
 
@@ -557,12 +571,14 @@ class MEC_RL_With_Uav(object):
                 with summary_writer.as_default():
                     tf.summary.scalar('Main/episode_reward', total_reward, step=episode)
                     tf.summary.scalar('Main/episode_steps', steps, step=episode)
-                #这一行确保所有的记录数据都被写入文件
+                    tf.summary.scalar('Main/episode_age', total_age, step=episode)
+
                 summary_writer.flush()
                 
                 self.save_model(episode, cur_time)
                 steps = 0
                 total_reward = 0
+                total_age = 0
 
             # 开始行动，获得奖励
             cur_uav_rewards, cur_sensor_rewards = self.actor_act(epoch)
@@ -571,18 +587,30 @@ class MEC_RL_With_Uav(object):
             self.replay()
 
             for i, uav in enumerate(self.uavs):
-                if(epoch == 1999):
+                # if(epoch == 1999):
+                #     file_path1 = 'new_logs/array_x.npy' + str(i)
+                #     np.save(file_path1, uav.position_x)
+                #     file_path2 = 'new_logs/array_y.npy' + str(i)
+                #     np.save(file_path2, uav.position_y)
+                if(epoch == 9999):
                     file_path1 = 'new_logs/array_x.npy' + str(i)
                     np.save(file_path1, uav.position_x)
                     file_path2 = 'new_logs/array_y.npy' + str(i)
                     np.save(file_path2, uav.position_y)
-                if(epoch == 9999):
-                    file_path3 = 'new_logs/array_x_last.npy' + str(i)
-                    np.save(file_path3, uav.position_x_last)
-                    file_path4 = 'new_logs/array_y_last.npy' + str(i)
-                    np.save(file_path4, uav.position_y_last)
+                    file_path3 = 'new_logs/array_x_first.npy' + str(i)
+                    np.save(file_path3, uav.position_x_first)
+                    file_path4 = 'new_logs/array_y_first.npy' + str(i)
+                    np.save(file_path4, uav.position_y_first)
+                    file_path5 = 'new_logs/array_x_last.npy' + str(i)
+                    np.save(file_path5, uav.position_x_last)
+                    file_path6 = 'new_logs/array_y_last.npy' + str(i)
+                    np.save(file_path6, uav.position_y_last)
+
 
             #判断是用来确定是否到了更新网络的时机，up_freq 是一个用于控制目标网络更新的频率的参数
+            if(epoch == 9999):
+                file_path7 = 'new_logs/d2d_num.npy'
+                np.save(file_path7, self.env.world.d2d_num)
             if epoch % up_freq == 1:
                 if FL:  #如果设置了FL（Federated Learning，即联邦学习），则会进行参数的聚合
                     merge_fl(self.uav_actors, FL_omega)
@@ -594,6 +622,7 @@ class MEC_RL_With_Uav(object):
                 update_target_net(self.center_critic, self.target_center_critic, self.tau)
             
             total_reward += np.sum(cur_uav_rewards) + np.sum(cur_sensor_rewards)
+            total_age += self.env.world.all_sensors_age
             steps += 1
             epoch += 1
 
@@ -608,6 +637,8 @@ class MEC_RL_With_Uav(object):
                             tf.summary.scalar('Uav/uav%s_critic_loss' % uav_count, self.summaries['uav%s-critic_loss' % uav_count], step=epoch)
                 tf.summary.scalar('Main/cur_uav_rewards', np.sum(cur_uav_rewards), step=epoch)
                 tf.summary.scalar('Main/cur_sensor_rewards', np.sum(cur_sensor_rewards), step=epoch)
+                tf.summary.scalar('Main/step_age', self.env.world.all_sensors_age, step=epoch)
+                tf.summary.scalar('Main/step_max_age', self.env.world.max_sensors_age, step=epoch)
 
             summary_writer.flush()
 

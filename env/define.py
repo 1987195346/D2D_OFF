@@ -47,7 +47,8 @@ class Sensor(object):
         self.total_data = {}
         self.lam = 1e3                      #在每个时隙中由泊松分布生成的数据量期望为1000。这通常适用于高数据生成速率的场景
         self.sensor_max_data_size = 2e3     #传感器生成数据的最大大小或者容量，设定为2000。
-        
+        self.d2d_count = 0
+        self.d2d_flag = False
         # 传输速率参数：
         self.ptr = 0.2
         self.h = 5
@@ -91,6 +92,8 @@ class EdgeUav(object):
 
         self.position_x = []
         self.position_y = []
+        self.position_x_first = []
+        self.position_y_first = []
         self.position_x_last = []
         self.position_y_last = []
         
@@ -129,6 +132,11 @@ class MEC_world(object):
         #【 假设 】以前是每一个传感器都会有自己的卸载决策，现在是只有被设备覆盖的传感器，才能有自己的卸载决策
         # self.sensor_delay = [0] * self.sensor_count
         self.sensor_delay = []
+
+        self.all_sensors_age = 0
+        self.max_sensors_age = 0
+        self.d2d_num = []
+
 
         # 设备创建，随机生成它们的位置
         #传感器的位置。这里创建了两个列表，分别表示传感器的 x 坐标和 y 坐标。位置的范围被限制在地图大小的 10% 到 90% 之间，以确保传感器不会出现在地图的边缘。
@@ -221,28 +229,34 @@ class MEC_world(object):
                         continue
                 # 索引为 9 表示卸载到其他传感器，【 假设 】 这里使用一个简单的策略，即卸载到最近的另一个传感器
                 elif position_index == 9:
-                    print("d2d start: \n")
-                    closest_sensor = None
-                    closest_distance = float('inf')
-                    for j, other_sensor in enumerate(self.sensors):
-                        if i != j:
-                            distance = np.linalg.norm(np.array(sensor.position) - np.array(other_sensor.position))
-                            if distance < closest_distance:
-                                closest_distance = distance
-                                closest_sensor = other_sensor
-                    if closest_sensor is not None and self.is_point_in_circle(sensor.position, closest_sensor.position, self.sensor_move_r):
-                        if (data_size > 1800):
-                            self.sensor_delay.append(2)  # 传感器处理的数据量超过1800时，给予固定的延迟奖励（值为2,函数调用地方还会变成1的）
-                        else:
-                            # 计算传输和处理延迟
-                            dist = np.linalg.norm(np.array(sensor.position) - np.array(closest_sensor.position))
-                            transmit_or_collect_delay = data_size / self.transmit_rate(dist, sensor)
-                            sensor_or_uav_process_delay = data_size / closest_sensor.computing_rate
-                            self.sensor_delay.append(transmit_or_collect_delay + sensor_or_uav_process_delay)
-                        ########closest_sensor.total_data[len(closest_sensor.total_data)] = data_size  # 将数据卸载到最近的传感器
-                        sensor.total_data = {}
-                        print("d2d ok \n")
-                        continue
+                    # 【2025年3月6日】计算 total_data 的长度，也就是观察它的年龄，与阈值进行比较
+                    if len(sensor.total_data) > 20:
+                        closest_sensor = None
+                        closest_distance = float('inf')
+                        for j, other_sensor in enumerate(self.sensors):
+                            if i != j:
+                                distance = np.linalg.norm(np.array(sensor.position) - np.array(other_sensor.position))
+                                if distance < closest_distance:
+                                    closest_distance = distance
+                                    closest_sensor = other_sensor
+                        if closest_sensor is not None and self.is_point_in_circle(sensor.position, closest_sensor.position, self.sensor_move_r):
+                            print("d2d start: \n")
+                            if (data_size > 1800):
+                                self.sensor_delay.append(2)  # 传感器处理的数据量超过1800时，给予固定的延迟奖励（值为2,函数调用地方还会变成1的）
+                            else:
+                                # 计算传输和处理延迟
+                                dist = np.linalg.norm(np.array(sensor.position) - np.array(closest_sensor.position))
+                                transmit_or_collect_delay = data_size / self.transmit_rate(dist, sensor)
+                                sensor_or_uav_process_delay = data_size / closest_sensor.computing_rate
+                                self.sensor_delay.append(transmit_or_collect_delay + sensor_or_uav_process_delay)
+                            ########closest_sensor.total_data[len(closest_sensor.total_data)] = data_size  # 将数据卸载到最近的传感器
+                            sensor.total_data = {}
+                            # 不应该放这里
+                            # self.d2d_num.append([epoch, sensor.no])
+                            # sensor.d2d_count += 1
+                            sensor.d2d_flag = True
+                            print("d2d ok \n")
+                            continue
                 # 如果没有走上面的 continue，则代表网络输出的卸载决策，不在设备的覆盖范围内
                 # 是一个错误的卸载决策，所以直接将奖励设置为 0
                 self.sensor_delay.append(0)
@@ -262,6 +276,13 @@ class MEC_world(object):
                 self.sensor_delay[i] = 1
             #将当前元素的值四舍五入到小数点后 3 位
             self.sensor_delay[i] = round(self.sensor_delay[i], 3)
+
+        self.all_sensors_age = 0
+        self.max_sensors_age = 0
+        for sensor in self.sensors:
+            self.all_sensors_age = self.all_sensors_age + len(sensor.total_data)
+            if len(sensor.total_data) > self.max_sensors_age:
+                self.max_sensors_age = len(sensor.total_data)
 
         #【 第三步：传感器生成数据、规范移动、获得设备状态 DS_state 】
         # 先重置 DS_state
